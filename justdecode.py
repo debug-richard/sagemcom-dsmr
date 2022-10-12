@@ -6,14 +6,18 @@ data_1 = ""
 data_2 = ""
 
 GLOBAL_UNICAST_ENC_KEY = ""
+GLOBAL_AUTHENTICATION_KEY = ""
 
 if __name__ == "__main__":
     if GLOBAL_UNICAST_ENC_KEY == "":
         raise RuntimeError("Please set the GLOBAL_UNICAST_ENC_KEY")
 
+    if GLOBAL_AUTHENTICATION_KEY == "":
+        raise RuntimeError("Please set the GLOBAL_AUTHENTICATION_KEY")
+
     for data in (data_1, data_2):
         data = bytes.fromhex(data)
-        decrypted = decrypt_frame(GLOBAL_UNICAST_ENC_KEY, data)
+        decrypted = decrypt_frame(GLOBAL_UNICAST_ENC_KEY, GLOBAL_AUTHENTICATION_KEY, data)
         encoded_frame = check_and_encode_frame(decrypted)
         response_as_dict = convert_to_dict(encoded_frame)
         #print("Raw frame:\n" + str(data.hex()))

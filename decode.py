@@ -1,7 +1,8 @@
 from binascii import unhexlify
 
-from Crypto.Cipher import AES
 from crccheck.crc import Crc16Arc as Crc16Cms
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 def __find_key(key: str, data: list):
@@ -63,30 +64,63 @@ def convert_to_dict(data: str):
     return res
 
 
-def decrypt_frame(global_unicast_enc_key: str, data: bytes):
+def decrypt_frame(global_unicast_enc_key: str, global_authentication_key: str, data: bytes):
     frame_len = len(data)
-    if frame_len < 500:
+    if frame_len < 18:
         raise ValueError("Frame length to short")
 
-    # First two bytes are a static header (?)
-    system_titel = data[2:10].hex()  # The next 8 bytes are the SYSTEM TITLE. The first 3 are the identifier and the remaining the serial number (?)
-    # There are four unknown bytes between the title and frame counter
-    frame_counter = data[14:18].hex()  # The frame counter has 4 bytes and changes on each transaction
-    frame = data[18:]  # Rest of the frame is encrypted
+    DLMS_TAG_GENERAL_GLOBAL_CIPHER = 0xDB
+    if data[0] != DLMS_TAG_GENERAL_GLOBAL_CIPHER:
+        raise ValueError("Wrong DLMS tag")
+
+    system_titel_length = data[1]
+    offset = system_titel_length + 2
+
+    if offset < 10:
+        raise ValueError("Frame length to short (offset)")
+
+    system_titel = data[2:offset].hex()  # The next x bytes are the SYSTEM TITLE. The first 3 are the identifier and the remaining the serial number (?)
+
+    IDENTIFICATOR = 0x82  # IEC_14908_IDENTIFICATION ?
+
+    if data[offset] != IDENTIFICATOR:
+        raise ValueError("Wrong identificator")
+
+    encrypted_length_inc_header = int.from_bytes(data[offset + 1:offset + 3], "big", signed=False)
+
+    if encrypted_length_inc_header + 13 != frame_len:  # 13 HEADER until length byte
+        raise ValueError("Frame length to short (encrypted)")
+
+    AUTHENTICATED_AND_ENCRYPTED = 0x30  # 0x30=AUTH+ENC, TODO: Full decode
+    encryption_type = data[offset + 3]
+    if encryption_type != AUTHENTICATED_AND_ENCRYPTED:
+        raise ValueError("Wrong encryption type")
+
+    TAG_LENGTH = 12
+    frame_counter = data[offset + 4:offset + 8].hex()  # The frame counter has 4 bytes and changes on each transaction
+    frame = data[offset + 8:-TAG_LENGTH]  # Rest of the frame is encrypted
+    tag = data[-TAG_LENGTH:]  # This is the auth tag
     init_vector = unhexlify(system_titel + frame_counter)
+
     try:
-        cipher = AES.new(unhexlify(global_unicast_enc_key), AES.MODE_GCM, nonce=init_vector)
-    except Exception as ex:
-        raise RuntimeError("Decryption failed. Key invalid? " + str(ex))
-    decrypted_data = cipher.decrypt(frame)
-    return decrypted_data
+        decrypt = Cipher(
+            algorithms.AES(unhexlify(global_unicast_enc_key)), modes.GCM(init_vector, tag, min_tag_length=12)
+        ).decryptor()
+
+        associated_data = AUTHENTICATED_AND_ENCRYPTED.to_bytes(1, "big", signed=False) + unhexlify(
+            global_authentication_key)
+        decrypt.authenticate_additional_data(associated_data)  # This is the GCM procedure for verifying the data
+
+        return decrypt.update(frame) + decrypt.finalize()
+    except InvalidTag:
+        raise ValueError("Unable to decrypt ciphertext. Keys are wrong or the frame is corrupted.")
 
 
 def check_and_encode_frame(data: bytes):
-    if len(data) < 481:
+    if len(data) < 7:
         raise ValueError("Data length invalid")
 
-    encoded_data = data[:479].decode("ascii")  # Data is plain ASCII
+    encoded_data = data[:-2].decode("ascii")  # Data is plain ASCII
 
     if not encoded_data.startswith("/"):
         raise ValueError("Start of decrypted frame invalid")
@@ -95,13 +129,11 @@ def check_and_encode_frame(data: bytes):
         raise ValueError("End of decrypted frame invalid")
 
     crc_in_frame = encoded_data[-4:]
-    crc = Crc16Cms.calchex(data[0:475], byteorder="big")
+    crc = Crc16Cms.calchex(data[0:-6], byteorder="big")
     if str(crc).upper() != crc_in_frame.upper():
         raise ValueError("CRC invalid")
 
-    if data[479:481] != b"\r\n":
+    if data[-2:] != b"\r\n":
         raise ValueError("End of frame invalid")
-
-    # print("Test " + str(len(data[481:]))) # Note: There are typically 12 unknown bytes attached at the end
 
     return encoded_data
