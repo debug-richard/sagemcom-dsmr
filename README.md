@@ -162,7 +162,7 @@ Wurde eingespeist (Zählerstand): {'Wirkenergie Bezug (Lieferung an EV) (-A)': {
 
 ## Beschreibung des Kommunikationsprotokolls
 Die Daten können seriell ausgelesen werden (Baud 115200, 8N1).
-Ein Information wird alle 5 Sekunden geschickt und ist 511 Byte lang.
+Eine Information wird alle 5 Sekunden geschickt und ist 511 Byte lang.
 
 Ich habe das Protokoll größtenteils Reverse-Engineered da es mehrere Standards kombiniert, die nicht öffentlich einsehbar sind...  
 Der Netzbetreiber interessiert sich auch nicht dafür.
@@ -183,7 +183,7 @@ db0853414735000040598201f23000000049
 
 **53 41 47 35 00 00 40 59**: "System Title", wird für die Entschlüsselung gebraucht, die ersten 3 Byte sind der Herstellercode in ASCII, der Rest ist unbekannt
 
-**82**: [IEC_14908_IDENTIFICATION, **Nicht gesichert**](https://github.com/pwitab/dlms-cosem/blob/06f6af444d6f80a2b41e1ea402d5b7f2372edd6e/dlms_cosem/enumerations.py#L286)
+**82**: [Länge der folgenden Längenbytes](https://github.com/pwitab/dlms-cosem/blob/739f81a58e5f07663a512d4a128851333a0ed5e6/dlms_cosem/a_xdr.py#L33)
 
 **01 f2**: Länge des verschlüsselten Inhalts
 
