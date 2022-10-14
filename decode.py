@@ -81,24 +81,25 @@ def decrypt_frame(global_unicast_enc_key: str, global_authentication_key: str, d
 
     system_titel = data[2:offset].hex()  # The next x bytes are the SYSTEM TITLE. The first 3 are the identifier and the remaining the serial number (?)
 
-    IDENTIFICATOR = 0x82  # IEC_14908_IDENTIFICATION ?
+    length_of_length_bytes = data[offset] # https://github.com/pwitab/dlms-cosem/blob/739f81a58e5f07663a512d4a128851333a0ed5e6/dlms_cosem/a_xdr.py#L33
+    offset += 1
+    if length_of_length_bytes & 0b10000000:
+        length_of_length_bytes = length_of_length_bytes & 0b01111111
+        encrypted_length_inc_header = int.from_bytes(data[offset:offset + length_of_length_bytes], "big", signed=False)
 
-    if data[offset] != IDENTIFICATOR:
-        raise ValueError("Wrong identificator")
+        if encrypted_length_inc_header + system_titel_length + 3 + length_of_length_bytes != frame_len:  # 3 TAG + system_titel_length byte + length byte
+            raise ValueError("Frame length to short (encrypted)")
 
-    encrypted_length_inc_header = int.from_bytes(data[offset + 1:offset + 3], "big", signed=False)
+        offset = offset + length_of_length_bytes
 
-    if encrypted_length_inc_header + 13 != frame_len:  # 13 HEADER until length byte
-        raise ValueError("Frame length to short (encrypted)")
-
-    AUTHENTICATED_AND_ENCRYPTED = 0x30  # 0x30=AUTH+ENC, TODO: Full decode
-    encryption_type = data[offset + 3]
+    AUTHENTICATED_AND_ENCRYPTED = 0x30  # 0x30=AUTH+ENC
+    encryption_type = data[offset]
     if encryption_type != AUTHENTICATED_AND_ENCRYPTED:
         raise ValueError("Wrong encryption type")
 
     TAG_LENGTH = 12
-    frame_counter = data[offset + 4:offset + 8].hex()  # The frame counter has 4 bytes and changes on each transaction
-    frame = data[offset + 8:-TAG_LENGTH]  # Rest of the frame is encrypted
+    frame_counter = data[offset + 1:offset + 5].hex()  # The frame counter has 4 bytes and changes on each transaction
+    frame = data[offset + 5:-TAG_LENGTH]  # Rest of the frame is encrypted
     tag = data[-TAG_LENGTH:]  # This is the auth tag
     init_vector = unhexlify(system_titel + frame_counter)
 
