@@ -22,9 +22,9 @@ def __find_key(key: str, data: list):
                 "year": value[0:2],
                 "month": value[2:4],
                 "day": value[4:6],
-                "hour": value[4:6],
-                "minute": value[6:8],
-                "second": value[8:10],
+                "hour": value[6:8],
+                "minute": value[8:10],
+                "second": value[10:12],
             }
     return value
 
